@@ -22,6 +22,7 @@ let procWidth = 0;
 let procHeight = 0;
 let transformedImageData = null;
 let state = "idle";
+let startupTimer = 0;
 
 const modeSettings = {
   prism: {
@@ -247,6 +248,86 @@ function resizeCanvases() {
   transformedImageData = artCtx.createImageData(procWidth, procHeight);
 }
 
+function cameraErrorMessage(error) {
+  const errorName = error && error.name;
+  if (errorName === "NotAllowedError") {
+    return "カメラの許可が拒否されました。ブラウザの権限設定を確認してください。";
+  }
+
+  if (errorName === "NotFoundError") {
+    return "接続可能なカメラが見つかりませんでした。";
+  }
+
+  if (errorName === "OverconstrainedError") {
+    return "この端末で要求した解像度を満たせませんでした。低い設定で再試行します。";
+  }
+
+  if (errorName === "NotReadableError") {
+    return "カメラが他のアプリで使用中です。カメラ利用中のアプリを終了して再試行してください。";
+  }
+
+  return `カメラ起動に失敗しました: ${error && error.message ? error.message : "不明なエラー"}`;
+}
+
+async function acquireCameraWithFallback() {
+  const constraintsList = [
+    {
+      video: {
+        facingMode: "user",
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+      },
+    },
+    {
+      video: {
+        facingMode: "user",
+        width: { ideal: 960 },
+        height: { ideal: 540 },
+      },
+    },
+    {
+      video: true,
+    },
+  ];
+
+  let lastError = null;
+
+  for (const constraints of constraintsList) {
+    try {
+      return await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (error) {
+      lastError = error;
+      if (error && error.name === "NotAllowedError") {
+        throw error;
+      }
+    }
+  }
+
+  throw lastError;
+}
+
+function waitForCameraFrame(cameraElement) {
+  return new Promise((resolve, reject) => {
+    if (!cameraElement) {
+      reject(new Error("カメラ要素が見つかりません。"));
+      return;
+    }
+
+    const onFrame = () => {
+      clearTimeout(startupTimer);
+      cameraElement.removeEventListener("loadeddata", onFrame);
+      resolve();
+    };
+
+    startupTimer = window.setTimeout(() => {
+      cameraElement.removeEventListener("loadeddata", onFrame);
+      resolve();
+    }, 2500);
+
+    cameraElement.addEventListener("loadeddata", onFrame, { once: true });
+  });
+}
+
 async function startCamera() {
   if (state === "running") {
     return;
@@ -263,16 +344,17 @@ async function startCamera() {
 
   try {
     setStatus("カメラのアクセス許可を待機中...");
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: "user",
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-      },
-    });
+
+    stream = await acquireCameraWithFallback();
+    const tracks = stream.getVideoTracks();
+
+    if (!tracks.length) {
+      throw new Error("カメラ映像トラックを取得できませんでした。");
+    }
 
     camera.srcObject = stream;
-    await camera.play();
+    await camera.play().catch(() => {});
+    await waitForCameraFrame(camera);
 
     resizeCanvases();
     state = "running";
@@ -282,22 +364,23 @@ async function startCamera() {
     setStatus("カメラ接続済み。アート変換を開始します。");
     animationId = requestAnimationFrame(draw);
   } catch (error) {
+    if (startupTimer) {
+      clearTimeout(startupTimer);
+      startupTimer = 0;
+    }
+
     state = "idle";
     stream = null;
     startButton.disabled = false;
     stopButton.disabled = true;
 
-    if (error && error.name === "NotAllowedError") {
-      setStatus("カメラの許可が拒否されました。ブラウザ設定を確認してください。");
-      return;
-    }
+    setStatus(cameraErrorMessage(error));
 
-    if (error && error.name === "NotFoundError") {
-      setStatus("カメラが見つかりません。接続機器を確認してください。");
-      return;
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
+      stream = null;
+      camera.srcObject = null;
     }
-
-    setStatus(`カメラ起動に失敗しました: ${error.message || "不明なエラー"}`);
   }
 }
 

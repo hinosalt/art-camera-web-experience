@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Camera Canvas Art</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main class="stage">
+    <header class="hero">
+      <p class="kicker">AI ART EXPERIENCE</p>
+      <h1>Webカメラで体験するアート空間</h1>
+      <p class="lead">PCカメラを許可すると、映像が毎フレーム新しく変形して「リアル→アート」へ変換されます。<br /><strong>本体験はブラウザ内でピクセル処理を行うのみで、外部AI APIは一切使用しません。</strong></p>
+    </header>
+
+    <section class="controls" aria-label="art controls">
+      <button id="startBtn" type="button">カメラを許可して開始</button>
+      <button id="stopBtn" type="button" disabled>停止</button>
+
+      <label>
+        エフェクト
+        <select id="modeSelect">
+          <option value="prism">Prism Drift</option>
+          <option value="fracture">Glitch Fracture</option>
+          <option value="aurora">Aurora Ink</option>
+        </select>
+      </label>
+
+      <label>
+        変換強度
+        <input id="intensityRange" type="range" min="0" max="100" value="65" />
+      </label>
+
+      <p id="statusText" class="status">カメラ待機中。ボタンを押してアクセス許可をリクエストしてください。</p>
+    </section>
+
+    <section class="canvas-shell" aria-live="polite">
+      <canvas id="visionCanvas" aria-label="art vision"></canvas>
+    </section>
+
+    <p class="note">注意: Safari/Firefoxではローカルファイル(file://)からはカメラが利用できません。HTTPSまたはローカルサーバー上で開いてください。</p>
+  </main>
+
+  <video id="camera" playsinline autoplay muted></video>
+  <canvas id="processingCanvas"></canvas>
+
+  <script src="./app.js" type="module"></script>
+</body>
+</html>

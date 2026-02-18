@@ -39,6 +39,13 @@ let cursorTargetX = 0.5;
 let cursorTargetY = 0.5;
 let cursorTargetStrength = 0;
 let cursorTargetDrag = 0;
+const cursorConfig = {
+  hoverStrength: 0.72,
+  dragStrength: 1.05,
+  smoothing: 0.09,
+  dragSmoothing: 0.11,
+  decayRate: 4.6,
+};
 let weatherSource = "未取得";
 let weather = {
   temp: null,
@@ -239,7 +246,9 @@ function applyCursorFromPointer(event, dragging) {
 
   cursorTargetX = point.x;
   cursorTargetY = point.y;
-  cursorTargetStrength = dragging ? 0.9 : 0.55;
+  cursorTargetStrength = dragging
+    ? clamp(cursorConfig.dragStrength, 0, 1)
+    : clamp(cursorConfig.hoverStrength, 0, 1);
   cursorTargetDrag = dragging ? 1 : 0;
 }
 
@@ -427,13 +436,13 @@ function atmosphereBlend(x, y, time, mode, intensity, signals, now, cursorXValue
   const jitter = Math.sin((x + y) * 0.045 + time * 0.001 * windBias + Math.cos(dayProgress * Math.PI * 2) + drift) * (5 + weatherWeight * 0.8);
   const orbit = (Math.sin((x * 0.02 + jitter * 0.2) + time * 0.0003 + i * 1.1) + Math.cos((y * 0.02 - jitter * 0.2) - totalMinutes * 0.008)) * (0.32 + weatherWeight * 0.045);
   const cursorDist = Math.hypot((x / procWidth) - cursorXValue, (y / procHeight) - cursorYValue);
-  const cursorPulse = Math.exp(-cursorDist * 6.1) * cursorStrengthValue * (1 + cursorDragValue * 0.6);
+  const cursorPulse = Math.exp(-cursorDist * cursorConfig.decayRate) * cursorStrengthValue * (1 + cursorDragValue * 0.75);
   const cursorFlow = Math.sin((x + y) * 0.06 + time * 0.001 * (1 + cursorDragValue) + cursorDist * 4) * cursorPulse;
 
   return {
     r: baseHue,
-    g: orbit * 18 + sat + cursorFlow * 12,
-    b: light + jitter + windBias * 2.6 + cursorPulse * 5.2,
+    g: orbit * 18 + sat + cursorFlow * 16,
+    b: light + jitter + windBias * 2.6 + cursorPulse * 8,
     sat,
     light: clamp(light + orbit * 8 + cursorFlow * 0.8, 10, 95),
     cursor: cursorPulse,
@@ -453,10 +462,10 @@ function draw(time) {
   const secondOfDay = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds() + now.getMilliseconds() / 1000;
   const timeSlow = secondOfDay * 0.08;
   const output = frameData.data;
-  cursorX = smoothBlend(cursorX, cursorTargetX, 0.12);
-  cursorY = smoothBlend(cursorY, cursorTargetY, 0.12);
-  cursorStrength = smoothBlend(cursorStrength, cursorTargetStrength, 0.05);
-  cursorDrag = smoothBlend(cursorDrag, cursorTargetDrag, 0.08);
+  cursorX = smoothBlend(cursorX, cursorTargetX, 0.14);
+  cursorY = smoothBlend(cursorY, cursorTargetY, 0.14);
+  cursorStrength = smoothBlend(cursorStrength, cursorTargetStrength, cursorConfig.smoothing);
+  cursorDrag = smoothBlend(cursorDrag, cursorTargetDrag, cursorConfig.dragSmoothing);
   const cursorSignal = Math.max(0, cursorStrength) * 0.9;
 
   refreshInfo(now);
@@ -467,14 +476,14 @@ function draw(time) {
     for (let x = 0; x < procWidth; x += 1) {
       const idx = (y * procWidth + x) * 4;
       const amp = atmosphereBlend(x, y, timeSlow, mode, intensity, signals, now, cursorX, cursorY, cursorStrength, cursorDrag);
-      const cursorPulse = amp.cursor * (1 + cursorDrag * 0.4);
+      const cursorPulse = amp.cursor * (1 + cursorDrag * 0.6);
 
-      const swirl = Math.sin((x * 0.045 + timeSlow * 0.03 * factor) + Math.cos(y * 0.03 - timeSlow * 0.02) + cursorPulse * 0.24);
-      const wave = Math.cos((y * 0.038 + timeSlow * 0.025 + mode.length) * factor) * 10 + cursorPulse * 3.2;
+      const swirl = Math.sin((x * 0.045 + timeSlow * 0.03 * factor) + Math.cos(y * 0.03 - timeSlow * 0.02) + cursorPulse * 0.4);
+      const wave = Math.cos((y * 0.038 + timeSlow * 0.025 + mode.length) * factor) * 10 + cursorPulse * 5;
 
       const hue = (amp.r + swirl * 18 + wave) % 360;
-      const sat = clamp(amp.sat + intensity * 0.20 + factor * 3.2 + cursorPulse * 16, 16, 74);
-      const light = clamp(amp.light + intensity * 0.11 + swell(now) + cursorPulse * 5, 8, 68);
+      const sat = clamp(amp.sat + intensity * 0.20 + factor * 3.2 + cursorPulse * 24, 16, 74);
+      const light = clamp(amp.light + intensity * 0.11 + swell(now) + cursorPulse * 7, 8, 68);
 
       const color = hslToRgba((hue + 360) % 360, sat, light);
       const edge = Math.sin((x / procWidth) * Math.PI * 2) * Math.cos((y / procHeight) * Math.PI * 2);

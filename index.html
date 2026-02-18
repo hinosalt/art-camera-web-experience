@@ -10,9 +10,8 @@
   <main class="stage">
     <header class="hero">
       <p class="kicker">気象と時刻で変わるアート</p>
-      <h1>カメラ不要のライブアート体験</h1>
-      <p class="lead">PCカメラは使用せず、
-        現在の日付・時間・天気を反映して毎秒映像が変化します。</p>
+      <h1>時間と天候のオーロラ</h1>
+      <p class="lead">日時・天候データで毎秒ゆっくり変化するオーロラ調のビジュアル。</p>
     </header>
 
     <section class="controls" aria-label="アート表現コントロール">
@@ -42,13 +41,26 @@
       <p>天気: <strong id="weatherText">取得中...</strong></p>
       <p>現在の天候係数: <strong id="weatherFactor">-</strong></p>
       <p>地点: <strong id="weatherLocationText">未取得</strong></p>
+      <p>取得状態: <strong id="weatherSourceText">未取得</strong></p>
+    </section>
+
+    <section class="insights" aria-live="polite">
+      <p>変換中変数</p>
+      <p>weatherFactor: <strong id="weatherFactorValue">-</strong></p>
+      <p>windBias: <strong id="windBiasValue">-</strong></p>
+      <p>tempBias: <strong id="tempBiasValue">-</strong></p>
+      <p>dayProgress: <strong id="dayProgressValue">-</strong></p>
+      <p>cursorSignal: <strong id="cursorSignalValue">0.00</strong></p>
+      <p>有効式: <strong id="influenceText">-</strong></p>
     </section>
 
     <section class="canvas-shell" aria-live="polite">
       <canvas id="visionCanvas" aria-label="art vision"></canvas>
+      <div id="cursorMarker" class="cursor-marker" aria-hidden="true"></div>
     </section>
 
-    <p class="note">カーソルを当てるだけで穏やかな流れに反応し、ドラッグするとよりはっきりとした筋状の流れが生まれます。位置情報許可があれば現在地の天気を取得します。許可しなくても時間ベースで継続されます。</p>
+    <p class="note">カーソルを当てるだけで穏やかな流れに反応し、ドラッグするとよりはっきりとした筋状の流れが生まれます。左上変数パネルで <strong>weatherFactor / windBias / tempBias / dayProgress / cursorSignal</strong> と
+      <strong>有効式</strong>（weatherWeight、dayWeight、total）を確認できます。位置情報許可があれば現在地の天気を取得します。許可しなくても時間ベースで継続されます。</p>
   </main>
 
   <script src="./app.js" type="module"></script>

@@ -10,9 +10,17 @@ const dateTimeText = document.getElementById("dateTimeText");
 const weatherText = document.getElementById("weatherText");
 const weatherFactorText = document.getElementById("weatherFactor");
 const weatherLocationText = document.getElementById("weatherLocationText");
+const weatherSourceText = document.getElementById("weatherSourceText");
+const weatherFactorValue = document.getElementById("weatherFactorValue");
+const windBiasValue = document.getElementById("windBiasValue");
+const tempBiasValue = document.getElementById("tempBiasValue");
+const dayProgressValue = document.getElementById("dayProgressValue");
+const cursorSignalValue = document.getElementById("cursorSignalValue");
+const influenceText = document.getElementById("influenceText");
 
 const visionCanvas = document.getElementById("visionCanvas");
 const visionCtx = visionCanvas.getContext("2d", { alpha: false });
+const cursorMarker = document.getElementById("cursorMarker");
 
 const artCanvas = document.createElement("canvas");
 const artCtx = artCanvas.getContext("2d", { alpha: false });
@@ -31,11 +39,13 @@ let cursorTargetX = 0.5;
 let cursorTargetY = 0.5;
 let cursorTargetStrength = 0;
 let cursorTargetDrag = 0;
+let weatherSource = "未取得";
 let weather = {
   temp: null,
   code: null,
   windspeed: null,
 };
+setWeatherSource(weatherSource);
 
 const weatherNames = {
   0: "快晴",
@@ -134,6 +144,19 @@ function setSafeText(element, message) {
   element.textContent = message;
 }
 
+function setWeatherSource(message) {
+  weatherSource = message;
+  setSafeText(weatherSourceText, message);
+}
+
+function signalText(value, fallback = "-") {
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return fallback;
+  }
+
+  return value.toFixed(2);
+}
+
 function normalizeWeatherCode(code) {
   if (code === null || code === undefined) {
     return 1;
@@ -220,6 +243,23 @@ function applyCursorFromPointer(event, dragging) {
   cursorTargetDrag = dragging ? 1 : 0;
 }
 
+function updateCursorMarker(event, dragging) {
+  if (!cursorMarker) {
+    return;
+  }
+
+  const point = clampPointer(event);
+  if (!point) {
+    cursorMarker.classList.remove("active");
+    return;
+  }
+
+  cursorMarker.style.left = `${Math.round(point.x * visionCanvas.clientWidth)}px`;
+  cursorMarker.style.top = `${Math.round(point.y * visionCanvas.clientHeight)}px`;
+  cursorMarker.classList.add("active");
+  cursorMarker.classList.toggle("dragging", dragging);
+}
+
 function clearCursorTarget() {
   cursorTargetStrength = 0;
   cursorTargetDrag = 0;
@@ -247,12 +287,47 @@ function renderWeatherInfo() {
   weatherFactorText.textContent = factor.toFixed(2);
 }
 
+function getWeatherSignals(now) {
+  const totalMinutes = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+  const dayProgress = clamp(totalMinutes / (24 * 60), 0, 1);
+  const weatherFactor = normalizeWeatherCode(weather.code);
+  const windBias = weather.windspeed == null ? 1 : clamp(1 + weather.windspeed / 45, 1, 2.4);
+  const tempBias = weather.temp == null ? 1 : clamp(0.82 + weather.temp / 45, 0.45, 1.75);
+  const weatherWeight = weatherFactor * 0.55 + windBias * 0.27 + tempBias * 0.18;
+  const dayWeight = 0.78 + dayProgress * 0.44;
+  const combinedWeather = weatherWeight * dayWeight;
+
+  return {
+    dayProgress,
+    weatherFactor,
+    windBias,
+    tempBias,
+    weatherWeight,
+    dayWeight,
+    combinedWeather,
+  };
+}
+
+function updateInsightValues(signals, cursorSignal) {
+  setSafeText(weatherFactorValue, signalText(signals.weatherFactor));
+  setSafeText(windBiasValue, signalText(signals.windBias));
+  setSafeText(tempBiasValue, signalText(signals.tempBias));
+  setSafeText(dayProgressValue, `${signalText(signals.dayProgress * 100)}%`);
+  setSafeText(cursorSignalValue, signalText(cursorSignal));
+  setSafeText(
+    influenceText,
+    `weatherWeight=${signalText(signals.weatherWeight)} / dayWeight=${signalText(signals.dayWeight)} / total=${signalText(signals.combinedWeather)}`,
+  );
+}
+
 async function fetchWeather() {
   weatherText.textContent = "天気を取得中...";
   weatherFactorText.textContent = "...";
+  setWeatherSource("位置情報を確認中…");
 
   if (!navigator.geolocation) {
     setStatus("この環境では位置情報を使えないため、時間要素のみで表現します。");
+    setWeatherSource("位置情報API非対応（時間ベース）");
     weatherText.textContent = "位置情報API非対応";
     weatherFactorText.textContent = "1.00";
     updateWeatherLocation(null, null);
@@ -266,6 +341,7 @@ async function fetchWeather() {
         try {
           const { latitude, longitude } = position.coords;
           updateWeatherLocation(latitude, longitude);
+          setWeatherSource("現在地で天気取得中");
           const weatherURL = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&timezone=auto`;
 
           const response = await fetch(weatherURL);
@@ -280,7 +356,9 @@ async function fetchWeather() {
             code: typeof w.weathercode === "number" ? w.weathercode : null,
             windspeed: typeof w.windspeed === "number" ? w.windspeed : null,
           };
+          setWeatherSource("現在地から取得成功");
         } catch (error) {
+          setWeatherSource("現在地は取得できたが天気情報取得失敗（時間ベース）");
           weather = { temp: null, code: null, windspeed: null };
           console.error(error);
           weatherText.textContent = "天気取得失敗（時間要素で継続）";
@@ -290,10 +368,20 @@ async function fetchWeather() {
         renderWeatherInfo();
         resolve();
       },
-      () => {
+      (error) => {
+        const reasonText =
+          error && error.code === 1
+            ? "位置情報許可なし（時間ベース）"
+            : error && error.code === 2
+              ? "位置情報取得不可（時間ベース）"
+              : error && error.code === 3
+                ? "位置情報タイムアウト（時間ベース）"
+                : "位置情報取得失敗（時間ベース）";
+
         weather = { temp: null, code: null, windspeed: null };
         updateWeatherLocation(null, null);
-        setStatus("位置情報を許可しない設定です。時間ベース表現で継続します。");
+        setWeatherSource(reasonText);
+        setStatus(`${reasonText}。時間ベースで再生します。`);
         renderWeatherInfo();
         resolve();
       },
@@ -302,49 +390,50 @@ async function fetchWeather() {
   });
 }
 
-function atmosphereBlend(x, y, time, mode, intensity, now, cursorXValue, cursorYValue, cursorStrengthValue, cursorDragValue) {
+function atmosphereBlend(x, y, time, mode, intensity, signals, now, cursorXValue, cursorYValue, cursorStrengthValue, cursorDragValue) {
   const i = intensity / 100;
-  const totalMinutes = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
-  const dayProgress = totalMinutes / (24 * 60);
+  const dayProgress = signals.dayProgress;
+  const totalMinutes = dayProgress * 24 * 60;
   const doy = dayOfYear(now);
   const secondOfDay = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds() + now.getMilliseconds() / 1000;
   const t = secondOfDay + x * 0.0008 + y * 0.0008;
   const drift = Math.sin(t * 0.12 + mode.length);
   const noise = pseudoNoise(x * 0.05 + t * 0.004, y * 0.05 + t * 0.004, (mode.length + i) * 6.2);
 
-  const weatherFactor = normalizeWeatherCode(weather.code);
-  const windBias = weather.windspeed == null ? 1 : 1 + weather.windspeed / 40;
-  const tempBias = weather.temp == null ? 0 : weather.temp / 40;
+  const weatherFactor = signals.weatherFactor;
+  const windBias = signals.windBias;
+  const tempBias = signals.tempBias;
+  const weatherWeight = signals.weatherWeight;
 
   let baseHue;
   let sat;
   let light;
 
   if (mode === "sunrise") {
-    baseHue = (210 + noise * 90 + Math.sin(dayProgress * Math.PI * 2) * 16 + doy * 0.4 + tempBias * 6 + drift * 10) % 360;
-    sat = 28 + 36 * i + weatherFactor * 5;
-    light = 34 + 16 * dayProgress + 10 * noise;
+    baseHue = (206 + noise * 84 + Math.sin(dayProgress * Math.PI * 2) * 16 + doy * 0.4 + tempBias * 8 + drift * 9 + windBias * 7) % 360;
+    sat = 28 + 34 * i + weatherWeight * 5.5 + weatherFactor * 2;
+    light = 35 + 14 * dayProgress + 8 * noise;
   } else if (mode === "storm") {
     baseHue = (170 + (x * 0.9 + y * 0.55 + time * 0.001 + i * 90) * 0.22 + drift * 8) % 360;
-    sat = 32 + weatherFactor * 6 + i * 8 + windBias * 4;
-    light = 26 + noise * 15 + Math.sin(t * 0.22 + x * 0.05) * 3 + weatherFactor * 3;
+    sat = 34 + weatherWeight * 6 + i * 8 + windBias * 5;
+    light = 24 + noise * 14 + Math.sin(t * 0.22 + x * 0.05) * 2.5 + weatherFactor * 2.8;
   } else {
     const aurora = Math.sin((x * 0.08 + t * 0.1) + Math.cos(y * 0.04 + now.getMinutes() * 0.2));
-    baseHue = (190 + aurora * 36 + y * 0.28 + dayProgress * 90 + weatherFactor * 12 + tempBias * 2) % 360;
-    sat = 42 + i * 12 + weatherFactor * 7;
-    light = 32 + 14 * Math.sin(noise * Math.PI * 2 + dayProgress * Math.PI * 2) + windBias * 2;
+    baseHue = (192 + aurora * 32 + y * 0.28 + dayProgress * 90 + weatherWeight * 9 + tempBias * 2.4) % 360;
+    sat = 42 + i * 11 + weatherWeight * 7;
+    light = 32 + 13 * Math.sin(noise * Math.PI * 2 + dayProgress * Math.PI * 2) + windBias * 2.4 + tempBias * 0.8;
   }
 
-  const jitter = Math.sin((x + y) * 0.045 + time * 0.001 * windBias + Math.cos(dayProgress * Math.PI * 2) + drift) * 6;
-  const orbit = (Math.sin((x * 0.02 + jitter * 0.2) + time * 0.0003 + i * 1.1) + Math.cos((y * 0.02 - jitter * 0.2) - totalMinutes * 0.008)) * 0.4;
+  const jitter = Math.sin((x + y) * 0.045 + time * 0.001 * windBias + Math.cos(dayProgress * Math.PI * 2) + drift) * (5 + weatherWeight * 0.8);
+  const orbit = (Math.sin((x * 0.02 + jitter * 0.2) + time * 0.0003 + i * 1.1) + Math.cos((y * 0.02 - jitter * 0.2) - totalMinutes * 0.008)) * (0.32 + weatherWeight * 0.045);
   const cursorDist = Math.hypot((x / procWidth) - cursorXValue, (y / procHeight) - cursorYValue);
-  const cursorPulse = Math.exp(-cursorDist * 7.2) * cursorStrengthValue * (1 + cursorDragValue * 0.45);
+  const cursorPulse = Math.exp(-cursorDist * 6.1) * cursorStrengthValue * (1 + cursorDragValue * 0.6);
   const cursorFlow = Math.sin((x + y) * 0.06 + time * 0.001 * (1 + cursorDragValue) + cursorDist * 4) * cursorPulse;
 
   return {
     r: baseHue,
-    g: orbit * 22 + sat + cursorFlow,
-    b: light + jitter + windBias * 3 + cursorPulse * 5,
+    g: orbit * 18 + sat + cursorFlow * 12,
+    b: light + jitter + windBias * 2.6 + cursorPulse * 5.2,
     sat,
     light: clamp(light + orbit * 8 + cursorFlow * 0.8, 10, 95),
     cursor: cursorPulse,
@@ -359,7 +448,8 @@ function draw(time) {
   const now = new Date();
   const mode = modeSelect.value;
   const intensity = Number(intensityRange.value);
-  const factor = normalizeWeatherCode(weather.code) * (1 + (weather.windspeed || 0) / 60);
+  const signals = getWeatherSignals(now);
+  const factor = signals.combinedWeather;
   const secondOfDay = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds() + now.getMilliseconds() / 1000;
   const timeSlow = secondOfDay * 0.08;
   const output = frameData.data;
@@ -371,19 +461,20 @@ function draw(time) {
 
   refreshInfo(now);
   renderWeatherInfo();
+  updateInsightValues(signals, cursorSignal);
 
   for (let y = 0; y < procHeight; y += 1) {
     for (let x = 0; x < procWidth; x += 1) {
       const idx = (y * procWidth + x) * 4;
-      const amp = atmosphereBlend(x, y, timeSlow, mode, intensity, now, cursorX, cursorY, cursorStrength, cursorDrag);
+      const amp = atmosphereBlend(x, y, timeSlow, mode, intensity, signals, now, cursorX, cursorY, cursorStrength, cursorDrag);
       const cursorPulse = amp.cursor * (1 + cursorDrag * 0.4);
 
-      const swirl = Math.sin((x * 0.045 + timeSlow * 0.03 * factor) + Math.cos(y * 0.03 - timeSlow * 0.02)) + cursorPulse * 0.18;
-      const wave = Math.cos((y * 0.038 + timeSlow * 0.025 + mode.length) * factor) * 10 + cursorPulse * 2.2;
+      const swirl = Math.sin((x * 0.045 + timeSlow * 0.03 * factor) + Math.cos(y * 0.03 - timeSlow * 0.02) + cursorPulse * 0.24);
+      const wave = Math.cos((y * 0.038 + timeSlow * 0.025 + mode.length) * factor) * 10 + cursorPulse * 3.2;
 
       const hue = (amp.r + swirl * 18 + wave) % 360;
-      const sat = clamp(amp.sat + intensity * 0.22 + factor * 4 + cursorPulse * 12, 18, 74);
-      const light = clamp(amp.light + intensity * 0.12 + swell(now) + cursorPulse * 3, 8, 68);
+      const sat = clamp(amp.sat + intensity * 0.20 + factor * 3.2 + cursorPulse * 16, 16, 74);
+      const light = clamp(amp.light + intensity * 0.11 + swell(now) + cursorPulse * 5, 8, 68);
 
       const color = hslToRgba((hue + 360) % 360, sat, light);
       const edge = Math.sin((x / procWidth) * Math.PI * 2) * Math.cos((y / procHeight) * Math.PI * 2);
@@ -419,7 +510,7 @@ function draw(time) {
   visionCtx.filter = "none";
 
   if (cursorSignal > 0.15) {
-    statusText.textContent = `動作中: ${modeLabel(mode)} / 強度 ${intensity}% / weather x ${factor.toFixed(2)} / カーソル有効`;
+    statusText.textContent = `動作中: ${modeLabel(mode)} / 強度 ${intensity}% / weather x ${factor.toFixed(2)} / カーソル ${Math.round(cursorSignal * 100)}%`;
   } else {
     statusText.textContent = `動作中: ${modeLabel(mode)} / 強度 ${intensity}% / weather x ${factor.toFixed(2)}`;
   }
@@ -454,6 +545,7 @@ function startArt() {
   startButton.disabled = true;
   stopButton.disabled = false;
   setStatus("生成を開始します...");
+  setWeatherSource("位置情報取得を待機中");
 
   resizeCanvases();
   if (previousFrame) {
@@ -477,16 +569,21 @@ function stopArt() {
     previousFrame.fill(0);
   }
   visionCtx.clearRect(0, 0, visionCanvas.width, visionCanvas.height);
+  if (cursorMarker) {
+    cursorMarker.classList.remove("active", "dragging");
+  }
   setStatus("停止しました。再開してください。");
 }
 
 function onCanvasPointerMove(event) {
   applyCursorFromPointer(event, cursorTargetDrag > 0.5);
+  updateCursorMarker(event, cursorTargetDrag > 0.5);
 }
 
 function onCanvasPointerDown(event) {
   visionCanvas.setPointerCapture(event.pointerId);
   applyCursorFromPointer(event, true);
+  updateCursorMarker(event, true);
 }
 
 function onCanvasPointerUp(event) {
@@ -500,10 +597,16 @@ function onCanvasPointerUp(event) {
 
   cursorTargetDrag = 0;
   clearCursorTarget();
+  if (cursorMarker) {
+    cursorMarker.classList.remove("dragging");
+  }
 }
 
 function onCanvasPointerLeave() {
   clearCursorTarget();
+  if (cursorMarker) {
+    cursorMarker.classList.remove("active", "dragging");
+  }
 }
 
 function refreshWeatherNow() {

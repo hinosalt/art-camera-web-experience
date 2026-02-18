@@ -78,6 +78,14 @@ h1 {
   padding: 0.8rem 1rem;
   color: var(--soft);
   background: var(--panel);
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.insights strong {
+  color: var(--ink);
+  letter-spacing: 0.01em;
+  font-family: "SFMono-Regular", "Consolas", "Menlo", monospace;
+  font-size: 0.9rem;
 }
 
 label {
@@ -146,6 +154,37 @@ input[type="range"] {
     0 18px 56px rgba(0, 0, 0, 0.35),
     inset 0 0 0 1px rgba(255, 255, 255, 0.08);
   animation: fadeIn 900ms ease-out 180ms both;
+}
+
+.cursor-marker {
+  position: absolute;
+  width: 64px;
+  height: 64px;
+  margin-top: -32px;
+  margin-left: -32px;
+  border: 1px solid rgba(174, 214, 255, 0.75);
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 140ms ease, transform 160ms ease;
+  transform: scale(0.72);
+  box-shadow: 0 0 16px rgba(173, 214, 255, 0.45);
+  z-index: 1;
+}
+
+.cursor-marker.active {
+  opacity: 0.65;
+}
+
+.cursor-marker.dragging {
+  width: 82px;
+  height: 82px;
+  margin-top: -41px;
+  margin-left: -41px;
+  opacity: 0.9;
+  border-color: rgba(201, 232, 255, 0.9);
+  box-shadow: 0 0 24px rgba(201, 232, 255, 0.65);
+  transform: scale(1);
 }
 
 .canvas-shell::before,

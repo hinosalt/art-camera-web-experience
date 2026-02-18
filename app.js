@@ -1,4 +1,4 @@
-// This app performs all frame transforms locally in browser memory; no AI API/network calls are used.
+// このアプリはブラウザ内でフレーム変換を行うのみで、外部AI APIやネットワーク通信は一切行いません。
 
 const startButton = document.getElementById("startBtn");
 const stopButton = document.getElementById("stopBtn");

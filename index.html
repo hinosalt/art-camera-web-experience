@@ -3,27 +3,27 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Camera Canvas Art</title>
+  <title>カメラアート体験</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
   <main class="stage">
     <header class="hero">
-      <p class="kicker">AI ART EXPERIENCE</p>
+      <p class="kicker">カメラアート・エクスペリエンス</p>
       <h1>Webカメラで体験するアート空間</h1>
       <p class="lead">PCカメラを許可すると、映像が毎フレーム新しく変形して「リアル→アート」へ変換されます。<br /><strong>本体験はブラウザ内でピクセル処理を行うのみで、外部AI APIは一切使用しません。</strong></p>
     </header>
 
-    <section class="controls" aria-label="art controls">
+    <section class="controls" aria-label="アート効果コントロール">
       <button id="startBtn" type="button">カメラを許可して開始</button>
       <button id="stopBtn" type="button" disabled>停止</button>
 
       <label>
         エフェクト
         <select id="modeSelect">
-          <option value="prism">Prism Drift</option>
-          <option value="fracture">Glitch Fracture</option>
-          <option value="aurora">Aurora Ink</option>
+          <option value="prism">プリズム・ドリフト</option>
+          <option value="fracture">フラクチャー・ノイズ</option>
+          <option value="aurora">オーロラ・インク</option>
         </select>
       </label>
 
@@ -36,7 +36,7 @@
     </section>
 
     <section class="canvas-shell" aria-live="polite">
-      <canvas id="visionCanvas" aria-label="art vision"></canvas>
+      <canvas id="visionCanvas" aria-label="アート映像"></canvas>
     </section>
 
     <p class="note">注意: Safari/Firefoxではローカルファイル(file://)からはカメラが利用できません。HTTPSまたはローカルサーバー上で開いてください。</p>

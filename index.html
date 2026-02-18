@@ -3,47 +3,51 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>カメラアート体験</title>
+  <title>日々のアート実験</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
   <main class="stage">
     <header class="hero">
-      <p class="kicker">カメラアート・エクスペリエンス</p>
-      <h1>Webカメラで体験するアート空間</h1>
-      <p class="lead">PCカメラを許可すると、映像が毎フレーム新しく変形して「リアル→アート」へ変換されます。<br /><strong>本体験はブラウザ内でピクセル処理を行うのみで、外部AI APIは一切使用しません。</strong></p>
+      <p class="kicker">気象と時刻で変わるアート</p>
+      <h1>カメラ不要のライブアート体験</h1>
+      <p class="lead">PCカメラは使用せず、
+        現在の日付・時間・天気を反映して毎秒映像が変化します。</p>
     </header>
 
-    <section class="controls" aria-label="アート効果コントロール">
-      <button id="startBtn" type="button">カメラを許可して開始</button>
+    <section class="controls" aria-label="アート表現コントロール">
+      <button id="startBtn" type="button">開始</button>
       <button id="stopBtn" type="button" disabled>停止</button>
 
       <label>
         エフェクト
         <select id="modeSelect">
-          <option value="prism">プリズム・ドリフト</option>
-          <option value="fracture">フラクチャー・ノイズ</option>
-          <option value="aurora">オーロラ・インク</option>
+          <option value="sunrise">夜明けの波</option>
+          <option value="storm">嵐のノイズ</option>
+          <option value="aurora">オーロラスピリット</option>
         </select>
       </label>
 
       <label>
-        変換強度
+        表現強度
         <input id="intensityRange" type="range" min="0" max="100" value="65" />
       </label>
 
-      <p id="statusText" class="status">カメラ待機中。ボタンを押してアクセス許可をリクエストしてください。</p>
+      <p id="statusText" class="status">開始ボタンでアートを開始します。</p>
+    </section>
+
+    <section class="insights" aria-live="polite">
+      <p>日時: <strong id="dateTimeText">取得中...</strong></p>
+      <p>天気: <strong id="weatherText">取得中...</strong></p>
+      <p>現在の天候係数: <strong id="weatherFactor">-</strong></p>
     </section>
 
     <section class="canvas-shell" aria-live="polite">
-      <canvas id="visionCanvas" aria-label="アート映像"></canvas>
+      <canvas id="visionCanvas" aria-label="art vision"></canvas>
     </section>
 
-    <p class="note">注意: Safari/Firefoxではローカルファイル(file://)からはカメラが利用できません。HTTPSまたはローカルサーバー上で開いてください。</p>
+    <p class="note">位置情報許可があれば現在地の天気を取得します。許可しなくても時間ベースの表現は続行されます。</p>
   </main>
-
-  <video id="camera" playsinline autoplay muted></video>
-  <canvas id="processingCanvas"></canvas>
 
   <script src="./app.js" type="module"></script>
 </body>

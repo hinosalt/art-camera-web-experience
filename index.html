@@ -18,6 +18,7 @@
     <section class="controls" aria-label="アート表現コントロール">
       <button id="startBtn" type="button">開始</button>
       <button id="stopBtn" type="button" disabled>停止</button>
+      <button id="refreshWeatherBtn" type="button">天気再取得</button>
 
       <label>
         エフェクト
@@ -40,13 +41,14 @@
       <p>日時: <strong id="dateTimeText">取得中...</strong></p>
       <p>天気: <strong id="weatherText">取得中...</strong></p>
       <p>現在の天候係数: <strong id="weatherFactor">-</strong></p>
+      <p>地点: <strong id="weatherLocationText">未取得</strong></p>
     </section>
 
     <section class="canvas-shell" aria-live="polite">
       <canvas id="visionCanvas" aria-label="art vision"></canvas>
     </section>
 
-    <p class="note">位置情報許可があれば現在地の天気を取得します。許可しなくても時間ベースの表現は続行されます。</p>
+    <p class="note">カーソルを当てるだけで穏やかな流れに反応し、ドラッグするとよりはっきりとした筋状の流れが生まれます。位置情報許可があれば現在地の天気を取得します。許可しなくても時間ベースで継続されます。</p>
   </main>
 
   <script src="./app.js" type="module"></script>

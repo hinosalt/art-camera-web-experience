@@ -4,10 +4,12 @@ const startButton = document.getElementById("startBtn");
 const stopButton = document.getElementById("stopBtn");
 const modeSelect = document.getElementById("modeSelect");
 const intensityRange = document.getElementById("intensityRange");
+const refreshWeatherButton = document.getElementById("refreshWeatherBtn");
 const statusText = document.getElementById("statusText");
 const dateTimeText = document.getElementById("dateTimeText");
 const weatherText = document.getElementById("weatherText");
 const weatherFactorText = document.getElementById("weatherFactor");
+const weatherLocationText = document.getElementById("weatherLocationText");
 
 const visionCanvas = document.getElementById("visionCanvas");
 const visionCtx = visionCanvas.getContext("2d", { alpha: false });
@@ -21,6 +23,14 @@ let procWidth = 0;
 let procHeight = 0;
 let frameData = null;
 let previousFrame = null;
+let cursorX = 0.5;
+let cursorY = 0.5;
+let cursorStrength = 0;
+let cursorDrag = 0;
+let cursorTargetX = 0.5;
+let cursorTargetY = 0.5;
+let cursorTargetStrength = 0;
+let cursorTargetDrag = 0;
 let weather = {
   temp: null,
   code: null,
@@ -117,6 +127,13 @@ function dayOfYear(now) {
   return Math.floor(diff / oneDay);
 }
 
+function setSafeText(element, message) {
+  if (!element) {
+    return;
+  }
+  element.textContent = message;
+}
+
 function normalizeWeatherCode(code) {
   if (code === null || code === undefined) {
     return 1;
@@ -171,6 +188,43 @@ function refreshInfo(now = new Date()) {
   dateTimeText.textContent = `${date} ${time}`;
 }
 
+function updateWeatherLocation(lat, lon) {
+  if (typeof lat !== "number" || typeof lon !== "number") {
+    setSafeText(weatherLocationText, "位置情報なし");
+    return;
+  }
+  setSafeText(weatherLocationText, `${lat.toFixed(3)}, ${lon.toFixed(3)}`);
+}
+
+function clampPointer(event) {
+  const rect = visionCanvas.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) {
+    return null;
+  }
+
+  return {
+    x: clamp((event.clientX - rect.left) / rect.width, 0, 1),
+    y: clamp((event.clientY - rect.top) / rect.height, 0, 1),
+  };
+}
+
+function applyCursorFromPointer(event, dragging) {
+  const point = clampPointer(event);
+  if (!point) {
+    return;
+  }
+
+  cursorTargetX = point.x;
+  cursorTargetY = point.y;
+  cursorTargetStrength = dragging ? 0.9 : 0.55;
+  cursorTargetDrag = dragging ? 1 : 0;
+}
+
+function clearCursorTarget() {
+  cursorTargetStrength = 0;
+  cursorTargetDrag = 0;
+}
+
 function resizeCanvases() {
   const targetWidth = Math.min(1200, Math.max(300, window.innerWidth - 64));
   const targetHeight = Math.max(220, Math.round(targetWidth * 9 / 16));
@@ -201,6 +255,7 @@ async function fetchWeather() {
     setStatus("この環境では位置情報を使えないため、時間要素のみで表現します。");
     weatherText.textContent = "位置情報API非対応";
     weatherFactorText.textContent = "1.00";
+    updateWeatherLocation(null, null);
     weather = { temp: null, code: null, windspeed: null };
     return;
   }
@@ -210,6 +265,7 @@ async function fetchWeather() {
       async (position) => {
         try {
           const { latitude, longitude } = position.coords;
+          updateWeatherLocation(latitude, longitude);
           const weatherURL = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&timezone=auto`;
 
           const response = await fetch(weatherURL);
@@ -236,6 +292,7 @@ async function fetchWeather() {
       },
       () => {
         weather = { temp: null, code: null, windspeed: null };
+        updateWeatherLocation(null, null);
         setStatus("位置情報を許可しない設定です。時間ベース表現で継続します。");
         renderWeatherInfo();
         resolve();
@@ -245,7 +302,7 @@ async function fetchWeather() {
   });
 }
 
-function atmosphereBlend(x, y, time, mode, intensity, now) {
+function atmosphereBlend(x, y, time, mode, intensity, now, cursorXValue, cursorYValue, cursorStrengthValue, cursorDragValue) {
   const i = intensity / 100;
   const totalMinutes = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
   const dayProgress = totalMinutes / (24 * 60);
@@ -280,13 +337,17 @@ function atmosphereBlend(x, y, time, mode, intensity, now) {
 
   const jitter = Math.sin((x + y) * 0.045 + time * 0.001 * windBias + Math.cos(dayProgress * Math.PI * 2) + drift) * 6;
   const orbit = (Math.sin((x * 0.02 + jitter * 0.2) + time * 0.0003 + i * 1.1) + Math.cos((y * 0.02 - jitter * 0.2) - totalMinutes * 0.008)) * 0.4;
+  const cursorDist = Math.hypot((x / procWidth) - cursorXValue, (y / procHeight) - cursorYValue);
+  const cursorPulse = Math.exp(-cursorDist * 7.2) * cursorStrengthValue * (1 + cursorDragValue * 0.45);
+  const cursorFlow = Math.sin((x + y) * 0.06 + time * 0.001 * (1 + cursorDragValue) + cursorDist * 4) * cursorPulse;
 
   return {
     r: baseHue,
-    g: orbit * 22 + sat,
-    b: light + jitter + windBias * 3,
+    g: orbit * 22 + sat + cursorFlow,
+    b: light + jitter + windBias * 3 + cursorPulse * 5,
     sat,
-    light: clamp(light + orbit * 8, 10, 95),
+    light: clamp(light + orbit * 8 + cursorFlow * 0.8, 10, 95),
+    cursor: cursorPulse,
   };
 }
 
@@ -302,6 +363,11 @@ function draw(time) {
   const secondOfDay = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds() + now.getMilliseconds() / 1000;
   const timeSlow = secondOfDay * 0.08;
   const output = frameData.data;
+  cursorX = smoothBlend(cursorX, cursorTargetX, 0.12);
+  cursorY = smoothBlend(cursorY, cursorTargetY, 0.12);
+  cursorStrength = smoothBlend(cursorStrength, cursorTargetStrength, 0.05);
+  cursorDrag = smoothBlend(cursorDrag, cursorTargetDrag, 0.08);
+  const cursorSignal = Math.max(0, cursorStrength) * 0.9;
 
   refreshInfo(now);
   renderWeatherInfo();
@@ -309,14 +375,15 @@ function draw(time) {
   for (let y = 0; y < procHeight; y += 1) {
     for (let x = 0; x < procWidth; x += 1) {
       const idx = (y * procWidth + x) * 4;
-      const amp = atmosphereBlend(x, y, timeSlow, mode, intensity, now);
+      const amp = atmosphereBlend(x, y, timeSlow, mode, intensity, now, cursorX, cursorY, cursorStrength, cursorDrag);
+      const cursorPulse = amp.cursor * (1 + cursorDrag * 0.4);
 
-      const swirl = Math.sin((x * 0.045 + timeSlow * 0.03 * factor) + Math.cos(y * 0.03 - timeSlow * 0.02));
-      const wave = Math.cos((y * 0.038 + timeSlow * 0.025 + mode.length) * factor) * 10;
+      const swirl = Math.sin((x * 0.045 + timeSlow * 0.03 * factor) + Math.cos(y * 0.03 - timeSlow * 0.02)) + cursorPulse * 0.18;
+      const wave = Math.cos((y * 0.038 + timeSlow * 0.025 + mode.length) * factor) * 10 + cursorPulse * 2.2;
 
       const hue = (amp.r + swirl * 18 + wave) % 360;
-      const sat = clamp(amp.sat + intensity * 0.22 + factor * 4, 18, 74);
-      const light = clamp(amp.light + intensity * 0.12 + swell(now), 8, 68);
+      const sat = clamp(amp.sat + intensity * 0.22 + factor * 4 + cursorPulse * 12, 18, 74);
+      const light = clamp(amp.light + intensity * 0.12 + swell(now) + cursorPulse * 3, 8, 68);
 
       const color = hslToRgba((hue + 360) % 360, sat, light);
       const edge = Math.sin((x / procWidth) * Math.PI * 2) * Math.cos((y / procHeight) * Math.PI * 2);
@@ -351,7 +418,11 @@ function draw(time) {
   visionCtx.drawImage(artCanvas, 0, 0, visionCanvas.width, visionCanvas.height);
   visionCtx.filter = "none";
 
-  statusText.textContent = `動作中: ${modeLabel(mode)} / 強度 ${intensity}% / weather x ${factor.toFixed(2)}`;
+  if (cursorSignal > 0.15) {
+    statusText.textContent = `動作中: ${modeLabel(mode)} / 強度 ${intensity}% / weather x ${factor.toFixed(2)} / カーソル有効`;
+  } else {
+    statusText.textContent = `動作中: ${modeLabel(mode)} / 強度 ${intensity}% / weather x ${factor.toFixed(2)}`;
+  }
   animationId = requestAnimationFrame(draw);
 }
 
@@ -409,8 +480,46 @@ function stopArt() {
   setStatus("停止しました。再開してください。");
 }
 
+function onCanvasPointerMove(event) {
+  applyCursorFromPointer(event, cursorTargetDrag > 0.5);
+}
+
+function onCanvasPointerDown(event) {
+  visionCanvas.setPointerCapture(event.pointerId);
+  applyCursorFromPointer(event, true);
+}
+
+function onCanvasPointerUp(event) {
+  try {
+    if (visionCanvas.hasPointerCapture(event.pointerId)) {
+      visionCanvas.releasePointerCapture(event.pointerId);
+    }
+  } catch {
+    // ignore browsers that don't support release in this state
+  }
+
+  cursorTargetDrag = 0;
+  clearCursorTarget();
+}
+
+function onCanvasPointerLeave() {
+  clearCursorTarget();
+}
+
+function refreshWeatherNow() {
+  fetchWeather();
+}
+
 startButton.addEventListener("click", startArt);
 stopButton.addEventListener("click", stopArt);
+refreshWeatherButton?.addEventListener("click", refreshWeatherNow);
+
+visionCanvas.addEventListener("pointermove", onCanvasPointerMove);
+visionCanvas.addEventListener("pointerdown", onCanvasPointerDown);
+visionCanvas.addEventListener("pointerup", onCanvasPointerUp);
+visionCanvas.addEventListener("pointercancel", onCanvasPointerUp);
+visionCanvas.addEventListener("pointerleave", onCanvasPointerLeave);
+visionCanvas.addEventListener("pointerover", onCanvasPointerMove);
 
 window.addEventListener("resize", () => {
   if (isRunning) {
